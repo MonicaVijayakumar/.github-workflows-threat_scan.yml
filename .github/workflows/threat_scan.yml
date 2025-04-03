@@ -1,0 +1,42 @@
+name: Threat Intelligence Scanner
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  scan_commits:
+    name: Scan for Threats
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Download Threat Intelligence Feed
+        run: |
+          curl -o iocs.txt https://feodotracker.abuse.ch/downloads/ipblocklist.txt
+          echo "Threat intelligence feed downloaded."
+
+      - name: Scan Commits for Malicious Indicators
+        run: |
+          echo "Scanning recent commits for threats..."
+          
+          # Get the last commit changes
+          git diff-tree --no-commit-id --name-only -r ${{ github.sha }} > changed_files.txt
+          
+          # Search for Indicators of Compromise (IOCs)
+          grep -F -f iocs.txt $(cat changed_files.txt) > suspicious_commits.txt || echo "No threats found"
+
+          # Check if suspicious commits were found
+          if [[ -s suspicious_commits.txt ]]; then
+            echo "Threats detected!"
+            echo "Threats detected in commits:" > issue_body.txt
+            cat suspicious_commits.txt >> issue_body.txt
+            echo "Creating GitHub Issue..."
+            gh issue create --title "⚠️ Threat Detected in Commit" --body "$(cat issue_body.txt)" --repo ${{ github.repository }}
+          else
+            echo "No threats found in recent commits."
+          fi
